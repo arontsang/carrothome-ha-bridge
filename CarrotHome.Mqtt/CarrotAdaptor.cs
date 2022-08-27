@@ -1,34 +1,51 @@
-﻿using System.Reactive.Concurrency;
+﻿using System;
+using System.Collections.Generic;
+using System.Net.Http;
+using System.Reactive.Concurrency;
 using System.Reactive.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using CarrotHome.Mqtt.Carrot;
 using DynamicData;
+using JetBrains.Annotations;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using RestEase;
 
 namespace CarrotHome.Mqtt;
 
 public class CarrotAdaptor
 	: IConnectableCache<LightStatus, int>
-	, IDisposable
 {
+	private readonly IOptions<CarrotAdaptorOptions> _options;
 	private readonly IObservable<IConnectableCache<LightStatus, int>> _cache;
-
+	private readonly ICarrotService _carrotService;
 
 	public CarrotAdaptor(
-		ICarrotService carrotService,
+		IHttpClientFactory clientFactory,
+		IOptions<CarrotAdaptorOptions> options,
 		ILogger<CarrotAdaptor> logger)
 	{
+		var foo = clientFactory.CreateClient();
+		foo.BaseAddress = new(options.Value.Server);
+		
+		
+		_carrotService = new RestClient(foo)
+			.For<ICarrotService>();
+		
+		_options = options;
 		_cache = Observable.Create<IConnectableCache<LightStatus, int>>(async (observable, stoppingToken) =>
 			{
 				using var cache = new SourceCache<LightStatus, int>(x => x.DeviceId);
 				observable.OnNext(cache);
 
-				using var logonTask = EnsureLoggedIn(carrotService);
+				using var logonTask = EnsureLoggedIn(_carrotService);
 
 				while (!stoppingToken.IsCancellationRequested)
 				{
 					try
 					{
-						await RunCache(cache, carrotService, stoppingToken);
+						await RunCache(cache, _carrotService, stoppingToken);
 					}
 					catch (OperationCanceledException)
 					{
@@ -43,8 +60,6 @@ public class CarrotAdaptor
 			})
 			.Replay(1)
 			.RefCount();
-		
-
 	}
 
 	public IObservable<IChangeSet<LightStatus, int>> Connect(Func<LightStatus, bool>? predicate = null, bool suppressEmptyChangeSets = true)
@@ -69,23 +84,18 @@ public class CarrotAdaptor
 		.Select(x => x.CountChanged)
 		.Switch();
 
-	public void Dispose()
-	{
-		
-	}
-
-	private static IDisposable EnsureLoggedIn(ICarrotService carrotService)
+	private IDisposable EnsureLoggedIn(ICarrotService carrotService)
 	{
 		return TaskPoolScheduler.Default.ScheduleAsync(async (scheduler, stoppingToken) =>
 		{
 			while (!stoppingToken.IsCancellationRequested)
 			{
-				_ = await carrotService.LoginAsync(
-					Environment.GetEnvironmentVariable("CARROT_USER")!, 
-					Environment.GetEnvironmentVariable("CARROT_PASS")!, 
+				await carrotService.LoginAsync(
+					_options.Value.User, 
+					_options.Value.Pass, 
 					stoppingToken);
 
-				await Task.Delay(TimeSpan.FromSeconds(3), stoppingToken);
+				await scheduler.Sleep(TimeSpan.FromHours(3), stoppingToken);
 			}
 		});
 	}
@@ -106,4 +116,19 @@ public class CarrotAdaptor
 			await Task.Delay(TimeSpan.FromSeconds(3), stoppingToken);
 		}
 	}
+
+	public Task SetLight(
+		int deviceId,
+		LightState state,
+		CancellationToken cancellationToken = default)
+	{
+		return _carrotService.SetLight(deviceId, (int)state);
+	}
+}
+
+public class CarrotAdaptorOptions
+{
+	public string Server { get; [UsedImplicitly] set; } = null!;
+	public string User { get; [UsedImplicitly] set; } = null!;
+	public string Pass { get; [UsedImplicitly] set; } = null!;
 }

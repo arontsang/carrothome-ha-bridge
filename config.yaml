@@ -1,0 +1,17 @@
+name: "Carrot Home"
+description: ""
+version: "1.0.0"
+slug: "carrot_home"
+init: false
+arch:
+  - amd64
+services:
+  - mqtt:need
+startup: application
+schema:
+  Http:
+    Validate_Https: "bool?"
+  Carrot:
+    Server: str
+    User: str
+    Pass: str

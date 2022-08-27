@@ -1,7 +1,13 @@
-﻿using System.Text.RegularExpressions;
+﻿using System.IO;
+using System.Linq;
+using System.Text.RegularExpressions;
+using System.Threading;
+using System.Threading.Tasks;
 using CarrotHome.Mqtt.Carrot;
 using DynamicData;
+using JetBrains.Annotations;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 using MQTTnet;
 using MQTTnet.Client;
 using MQTTnet.Extensions.ManagedClient;
@@ -15,13 +21,18 @@ public class MqttAdaptorService
 	
 {
 	private readonly IConnectableCache<LightStatus, int> _lightCache;
-	private readonly ICarrotService _carrotService;
+	private readonly IOptions<MqttAdaptorOptions> _options;
+	private readonly CarrotAdaptor _carrotService;
 	private readonly IManagedMqttClient _client;
 	private readonly JsonSerializer _serializer;
 
-	public MqttAdaptorService(IConnectableCache<LightStatus, int> lightCache, ICarrotService carrotService)
+	public MqttAdaptorService(
+		IConnectableCache<LightStatus, int> lightCache, 
+		IOptions<MqttAdaptorOptions> options,
+		CarrotAdaptor carrotService)
 	{
 		_lightCache = lightCache;
+		_options = options;
 		_carrotService = carrotService;
 		
 		_serializer = new JsonSerializer();
@@ -38,15 +49,27 @@ public class MqttAdaptorService
 
 	protected override async Task ExecuteAsync(CancellationToken stoppingToken)
 	{
-		var clientOptions = new MqttClientOptionsBuilder()
+		var port = _options.Value.Port switch
+		{
+			{ } value => value,
+			null when _options.Value!.UseTls => 8883,
+			_ => 1883
+		};
+		
+		var clientOptionsBuilder = new MqttClientOptionsBuilder()
 			.WithTcpServer(
-				Environment.GetEnvironmentVariable("MQTT_HOST"), 
-				int.Parse(Environment.GetEnvironmentVariable("MQTT_PORT")!))
+				_options.Value.Server, 
+				port)
 			.WithCredentials(
-				Environment.GetEnvironmentVariable("MQTT_USER"),
-				Environment.GetEnvironmentVariable("MQTT_PASS"))
-			
+				_options.Value.User,
+				_options.Value.Pass);
+
+		if (_options.Value.UseTls)
+			clientOptionsBuilder = clientOptionsBuilder.WithTls();
+		
+		var clientOptions = clientOptionsBuilder
 			.Build();
+		
 		var options = new ManagedMqttClientOptionsBuilder()
 			.WithClientOptions(clientOptions)
 			.Build();
@@ -103,18 +126,20 @@ public class MqttAdaptorService
 	
 	async Task OnLightStateSet(MqttApplicationMessageReceivedEventArgs args)
 	{
+		args.AutoAcknowledge = false;
 		if (Regex.Match(args.ApplicationMessage.Topic) is { Success: true } topicMatch && topicMatch.Groups["id"] is { Value: { } idStr } && int.TryParse(idStr, out var id))
 		{
 			using var stream = new MemoryStream(args.ApplicationMessage.Payload);
 			using var json = new JsonTextReader(new StreamReader(stream));
 			var payload = _serializer.Deserialize<StatePayload>(json);
 			
-			await _carrotService.SetLight(id, (int)payload.State);
+			await _carrotService.SetLight(id, payload.State);
 			await using var stringBuilder = new StringWriter();
 			_serializer.Serialize(stringBuilder, payload);
 			var updatedState = stringBuilder.ToString();
 
 			await _client.EnqueueAsync($"carrot/light/carrothome{id}/state", updatedState);
+			
 			await args.AcknowledgeAsync(default);
 			return;
 		}
@@ -179,4 +204,13 @@ public class MqttAdaptorService
 		[JsonConverter(typeof(StringEnumConverter))]  
 		public LightState State { get; }
 	} 
+}
+
+public class MqttAdaptorOptions
+{
+	public string Server { get; [UsedImplicitly] set; } = null!;
+	public int? Port { get; [UsedImplicitly] set; }
+	public bool UseTls { get; [UsedImplicitly] set; } = false;
+	public string User { get; [UsedImplicitly] set; } = null!;
+	public string Pass { get; [UsedImplicitly] set; } = null!;
 }
