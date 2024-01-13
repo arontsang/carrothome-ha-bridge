@@ -5,6 +5,9 @@ slug: "carrot_home"
 init: false
 arch:
   - amd64
+  - aarch64
+  - armhf
+  - armv7
 services:
   - mqtt:need
 startup: application

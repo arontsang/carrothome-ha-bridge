@@ -2,6 +2,14 @@
 Microsoft Visual Studio Solution File, Format Version 12.00
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CarrotHome.Mqtt", "CarrotHome.Mqtt\CarrotHome.Mqtt.csproj", "{B32E5C2F-4632-4697-87E9-20D82396CAB0}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution", "Solution", "{67FACE49-E521-4D5A-9F1C-A946325A4D2B}"
+	ProjectSection(SolutionItems) = preProject
+		base.yaml = base.yaml
+		config.yaml = config.yaml
+		docker-entrypoint.sh = docker-entrypoint.sh
+		Dockerfile = Dockerfile
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
