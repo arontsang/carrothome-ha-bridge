@@ -31,4 +31,4 @@ if bashio::config.is_empty 'mqtt' && bashio::var.has_value "$(bashio::services '
     export Mqtt__User
 fi
 
-dotnet /app/CarrotHome.Mqtt.dll
+/app/CarrotHome.Mqtt
