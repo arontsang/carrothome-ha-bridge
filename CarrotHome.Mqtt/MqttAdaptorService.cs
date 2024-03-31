@@ -1,9 +1,6 @@
-﻿using System.IO;
-using System.Linq;
-using System.Text.RegularExpressions;
-using System.Threading;
-using System.Threading.Tasks;
+﻿using System.Text.RegularExpressions;
 using CarrotHome.Mqtt.Carrot;
+using CommunityToolkit.HighPerformance;
 using DynamicData;
 using JetBrains.Annotations;
 using Microsoft.Extensions.Hosting;
@@ -52,7 +49,7 @@ public class MqttAdaptorService
 		var port = _options.Value.Port switch
 		{
 			{ } value => value,
-			null when _options.Value!.UseTls => 8883,
+			null when _options.Value.UseTls => 8883,
 			_ => 1883
 		};
 		
@@ -65,7 +62,10 @@ public class MqttAdaptorService
 				_options.Value.Pass);
 
 		if (_options.Value.UseTls)
-			clientOptionsBuilder = clientOptionsBuilder.WithTls();
+			clientOptionsBuilder = clientOptionsBuilder.WithTlsOptions(options =>
+			{
+				options.UseTls();
+			});
 		
 		var clientOptions = clientOptionsBuilder
 			.Build();
@@ -129,9 +129,11 @@ public class MqttAdaptorService
 		args.AutoAcknowledge = false;
 		if (Regex.Match(args.ApplicationMessage.Topic) is { Success: true } topicMatch && topicMatch.Groups["id"] is { Value: { } idStr } && int.TryParse(idStr, out var id))
 		{
-			using var stream = new MemoryStream(args.ApplicationMessage.Payload);
+			await using var stream = args.ApplicationMessage.PayloadSegment
+				.AsMemory()
+				.AsStream();
 			using var json = new JsonTextReader(new StreamReader(stream));
-			var payload = _serializer.Deserialize<StatePayload>(json);
+			if (_serializer.Deserialize<StatePayload>(json) is not { } payload) return;
 			
 			await _carrotService.SetLight(id, payload.State);
 			await using var stringBuilder = new StringWriter();
@@ -156,7 +158,6 @@ public class MqttAdaptorService
 				await UpdateState(light.DeviceId, light.Value);
 			}
 			await args.AcknowledgeAsync(default);
-			return;
 		}
 	}
 	
@@ -208,9 +209,9 @@ public class MqttAdaptorService
 
 public class MqttAdaptorOptions
 {
-	public string Server { get; [UsedImplicitly] set; } = null!;
+	public required string Server { get; [UsedImplicitly] set; }
 	public int? Port { get; [UsedImplicitly] set; }
-	public bool UseTls { get; [UsedImplicitly] set; } = false;
-	public string User { get; [UsedImplicitly] set; } = null!;
-	public string Pass { get; [UsedImplicitly] set; } = null!;
+	public bool UseTls { get; [UsedImplicitly] set; }
+	public required string User { get; [UsedImplicitly] set; }
+	public required string Pass { get; [UsedImplicitly] set; }
 }

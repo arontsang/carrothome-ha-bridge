@@ -1,8 +1,4 @@
-﻿using System;
-using System.Net;
-using System.Net.Http;
-using System.Net.Security;
-using System.Security.Authentication;
+﻿using System.Net.Security;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -26,23 +22,22 @@ public static class HttpsHelper
 		builder.Services.AddScoped<SocketsHttpHandler>();
 		builder.ConfigurePrimaryHttpMessageHandler<SocketsHttpHandler>();
 		
-		builder.ConfigureHttpMessageHandlerBuilder(handlerBuilder =>
+		builder.ConfigurePrimaryHttpMessageHandler((handler, serviceProvider) =>
 		{
-			var logger = handlerBuilder.Services.GetService<ILogger<HttpClientHandler>>();
-			if (handlerBuilder.Services.ShouldValidateHttps() == false)
+			var logger = serviceProvider.GetService<ILogger<HttpClientHandler>>();
+			if (serviceProvider.ShouldValidateHttps()
+			    || handler is not SocketsHttpHandler socketsHttpHandler) return;
+			logger?.LogWarning("Disable SSL verification");
+			if (OperatingSystem.IsLinux())
 			{
-				if (handlerBuilder.PrimaryHandler is SocketsHttpHandler socketsHttpHandler)
+				socketsHttpHandler.SslOptions.CipherSuitesPolicy = new CipherSuitesPolicy(new[]
 				{
-					logger?.LogWarning("Disable SSL verification");
-					socketsHttpHandler.SslOptions.CipherSuitesPolicy = new CipherSuitesPolicy(new[]
-					{
-						TlsCipherSuite.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
-						TlsCipherSuite.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
-						TlsCipherSuite.TLS_RSA_WITH_AES_256_CBC_SHA,
-					});
-					socketsHttpHandler.SslOptions.RemoteCertificateValidationCallback = static (_, _, _, _) => true;
-				}
+					TlsCipherSuite.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+					TlsCipherSuite.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+					TlsCipherSuite.TLS_RSA_WITH_AES_256_CBC_SHA,
+				});
 			}
+			socketsHttpHandler.SslOptions.RemoteCertificateValidationCallback = static (_, _, _, _) => true;
 		});
 
 		return builder;
