@@ -1,5 +1,4 @@
-﻿using System;
-using JetBrains.Annotations;
+﻿using JetBrains.Annotations;
 using Newtonsoft.Json;
 
 namespace CarrotHome.Mqtt.Carrot;
@@ -42,6 +41,8 @@ public class LightStatus
 
 public enum LightState
 {
+	// ReSharper disable once InconsistentNaming
 	OFF = 0,
+	// ReSharper disable once InconsistentNaming
 	ON = 64,
 }

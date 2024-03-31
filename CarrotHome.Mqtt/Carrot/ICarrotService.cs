@@ -1,6 +1,4 @@
-﻿using System.Threading;
-using System.Threading.Tasks;
-using RestEase;
+﻿using RestEase;
 
 namespace CarrotHome.Mqtt.Carrot;
 

@@ -7,6 +7,8 @@ public class LoginResponse
 
 public enum OperationResult
 {
+	// ReSharper disable once InconsistentNaming
 	success,
+	// ReSharper disable once InconsistentNaming
 	fail,
 }
